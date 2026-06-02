@@ -719,51 +719,33 @@
   req.responseType = 'blob';
 
   function showStartButton() {
-    // 로딩바와 퍼센트, 안내 문구 숨기기
     document.getElementById('progressWrap').style.display = 'none';
     document.getElementById('progressPercent').style.display = 'none';
     document.getElementById('loadingNotice').style.display = 'none';
     document.getElementById('loadingText').innerText = "종묘 타임라인 로드 완료";
     
-    // 버튼 활성화
     const btn = document.getElementById('startBtn');
     btn.style.display = 'block';
-    btn.offsetHeight; // force reflow
+    btn.offsetHeight;
     btn.classList.add('show');
     
     btn.addEventListener('click', () => {
-      // 브라우저 전체화면 요청
+      // 전체화면 요청
       const doc = document.documentElement;
       if (doc.requestFullscreen) {
         doc.requestFullscreen().catch(err => console.log("Fullscreen blocked", err));
       } else if (doc.webkitRequestFullscreen) {
         doc.webkitRequestFullscreen();
       }
-      
-      // 오버레이 페이드아웃 시작
+      // 오버레이 즉시 직접 제거 (워멤업 이미 완료된 상태)
       const overlay = document.getElementById('loadingOverlay');
-      overlay.style.transition = 'opacity 0.8s ease';
+      overlay.style.transition = 'opacity 0.5s ease';
       overlay.style.opacity = '0';
-
-      // 페이드아웃 중(800ms) 백그라운드에서 모든 타임코드를 순차 seek → 브라우저 디코더 워멤업
-      const warmupTimes = timelineData.map(d => d.timecode);
-      let warmupIdx = 0;
-
-      function doWarmup() {
-        if (warmupIdx >= warmupTimes.length) return;
-        video.currentTime = warmupTimes[warmupIdx];
-        warmupIdx++;
-        // 이전 seek이 완료된 시점에 다음 seek (연속 탐색 과부하 방지)
-        video.onseeked = doWarmup;
-      }
-      doWarmup();
-
       setTimeout(() => {
-        video.onseeked = null; // 워멤업 종료
         overlay.style.display = 'none';
         calculateTargetScrollTops();
         updateTimeline();
-      }, 800);
+      }, 500);
     });
   }
 
@@ -772,12 +754,39 @@
       const videoBlob = this.response;
       const vidURL = URL.createObjectURL(videoBlob);
       video.src = vidURL;
-      
-      // 로딩 바 100% 채운 뒤 시작 버튼 노출
+
       document.getElementById('progressBar').style.width = '100%';
       document.getElementById('progressPercent').innerText = '100%';
-      
-      setTimeout(showStartButton, 300);
+
+      // 블롫 세팅 후 비디오가 실제로 재생 가능해지면 워멤업 시작
+      video.oncanplay = function() {
+        video.oncanplay = null;
+
+        // 로딩 화면을 "프레임 준비 중" 상태로 전환
+        document.getElementById('progressWrap').style.display = 'none';
+        document.getElementById('progressPercent').style.display = 'none';
+        document.getElementById('loadingNotice').style.display = 'none';
+        const loadingText = document.getElementById('loadingText');
+
+        // 75개 연도 타임코드를 순차 seek → 브라우저 디코더 완전 워멤업
+        const warmupTimes = timelineData.map(d => d.timecode);
+        let warmupIdx = 0;
+
+        function doWarmup() {
+          if (warmupIdx >= warmupTimes.length) {
+            // 등장 타임코드를 영상 시작점으로 원위치 복원
+            video.onseeked = null;
+            video.currentTime = 0;
+            showStartButton();
+            return;
+          }
+          loadingText.innerText = `프레임 준비 중... (${warmupIdx + 1} / ${warmupTimes.length})`;
+          video.currentTime = warmupTimes[warmupIdx];
+          warmupIdx++;
+          video.onseeked = doWarmup;
+        }
+        doWarmup();
+      };
     }
   };
 
