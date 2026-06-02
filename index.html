@@ -86,6 +86,7 @@
     color: #555555; /* 어두운 회색 */
     font-weight: 700;
     text-shadow: none; /* 그림자 제거 */
+    transition: color 0.25s ease;
   }
 
   .nav-item .year-text {
@@ -94,6 +95,17 @@
     color: #000000; /* 검은색 */
     font-weight: 900;
     text-shadow: none; /* 그림자 제거 */
+    transition: color 0.25s ease;
+  }
+
+  /* active 스타일: 종묘 기둥 전통 붉은색(핏빛) 적용 */
+  .nav-item.active .year-text {
+    color: #8C2020 !important;
+    text-shadow: 0 0 10px rgba(140, 32, 32, 0.25);
+  }
+
+  .nav-item.active .era-text {
+    color: #701B1B !important;
   }
 
   /* 우측 레이어 상하 마스크 비활성화 */
@@ -589,7 +601,9 @@
       
       // 오파시티 곡선 및 크기 변환 적용 (1.8 제곱으로 더 선명하게 페이드)
       const opacity = Math.pow(ratio, 1.8);
-      const scale = 0.8 + 0.3 * ratio; // 0.8 ~ 1.1
+      
+      // 가운데 연도가 더 크게 도드라지고 위아래는 더 작아지도록 3D 실린더 입체감 구현 (0.65 ~ 1.30 스케일)
+      const scale = 0.65 + 0.65 * Math.pow(ratio, 1.6);
 
       item.style.opacity = opacity.toFixed(3);
       item.style.transform = `scale(${scale.toFixed(3)})`;
@@ -673,9 +687,17 @@
   function smoothScrubLoop() {
     if (!video.paused) video.pause(); 
 
-    currentVideoTime += (targetVideoTime - currentVideoTime) * 0.12; 
+    // 슬라이더 조작 시 반응성 향상을 위해 Lerp 가속
+    const lerpFactor = isSliderDragging ? 0.3 : 0.15;
 
-    if (video.readyState >= 1) {
+    if (Math.abs(targetVideoTime - currentVideoTime) < 0.001) {
+      currentVideoTime = targetVideoTime;
+    } else {
+      currentVideoTime += (targetVideoTime - currentVideoTime) * lerpFactor;
+    }
+
+    // 브라우저의 디코딩 상태(video.seeking)를 확인하여 이전 프레임의 탐색이 완료된 경우에만 새로운 탐색 요청을 보냄 (버벅임 및 프레임 밀림 원천 방지)
+    if (video.readyState >= 1 && !video.seeking) {
       if (Math.abs(targetVideoTime - currentVideoTime) > 0.005) {
         video.currentTime = currentVideoTime;
       }
@@ -718,15 +740,30 @@
         doc.webkitRequestFullscreen();
       }
       
-      // 오버레이 페이드아웃 및 타임라인 시작
+      // 오버레이 페이드아웃 시작
       const overlay = document.getElementById('loadingOverlay');
-      overlay.style.transition = 'opacity 0.5s ease';
+      overlay.style.transition = 'opacity 0.8s ease';
       overlay.style.opacity = '0';
+
+      // 페이드아웃 중(800ms) 백그라운드에서 모든 타임코드를 순차 seek → 브라우저 디코더 워멤업
+      const warmupTimes = timelineData.map(d => d.timecode);
+      let warmupIdx = 0;
+
+      function doWarmup() {
+        if (warmupIdx >= warmupTimes.length) return;
+        video.currentTime = warmupTimes[warmupIdx];
+        warmupIdx++;
+        // 이전 seek이 완료된 시점에 다음 seek (연속 탐색 과부하 방지)
+        video.onseeked = doWarmup;
+      }
+      doWarmup();
+
       setTimeout(() => {
+        video.onseeked = null; // 워멤업 종료
         overlay.style.display = 'none';
         calculateTargetScrollTops();
         updateTimeline();
-      }, 500);
+      }, 800);
     });
   }
 
