@@ -1,0 +1,710 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>종묘 타임라인 키오스크 V1</title>
+<link rel="stylesheet" as="style" crossorigin href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.css" />
+<style>
+  :root { 
+    --nav-width: 15vw; /* 우측 15% 영역 */
+    --bg-color: #000000;
+  }
+  
+  *, *::before, *::after { box-sizing: border-box; }
+
+  body { 
+    margin: 0; padding: 0; 
+    background: var(--bg-color); 
+    overflow: hidden; 
+    font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, 'Helvetica Neue', 'Segoe UI', 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif; 
+    user-select: none;
+    width: 100vw;
+    height: 100vh;
+  }
+  
+  /* 메인 컨테이너: 우측 배치를 위해 row-reverse 구성 */
+  .kiosk-wrap { 
+    display: flex; 
+    width: 100vw; 
+    height: 100vh; 
+    flex-direction: row-reverse; 
+    position: relative;
+  }
+
+  /* 우측 타임 네비게이터 */
+  .nav-container-box {
+    position: relative; 
+    width: var(--nav-width); 
+    height: 100%;
+    z-index: 10; /* 영상 위에 올라오도록 셋팅 */
+  }
+
+  .nav-panel {
+    width: 100%; 
+    height: 100%; 
+    display: flex; 
+    flex-direction: column; 
+    position: relative;
+    overflow-y: scroll; 
+    scroll-snap-type: y mandatory;
+    scrollbar-width: none;
+    cursor: grab;
+    background: transparent; /* 영상 위에 투명 배경으로 오버레이 */
+  }
+  .nav-panel:active { cursor: grabbing; }
+  .nav-panel::-webkit-scrollbar { display: none; }
+
+  /* 다이얼 아이템 스타일 (우측 정렬, 줄바꿈 없음) */
+  .nav-item {
+    min-height: 8.5vh; /* 기존 12vh에서 8.5vh로 줄여서 더 촘촘하고 컴팩트하게 배치 */
+    display: flex; 
+    justify-content: flex-end;
+    align-items: center;
+    padding-right: 1.5vw;
+    padding-left: 1.5vw;
+    scroll-snap-align: center;
+    transform-origin: right center;
+    white-space: nowrap; /* 줄바꿈 절대 방지 */
+    width: 100%;
+    cursor: pointer; /* 클릭이 가능하므로 커서 포인터 추가 */
+  }
+  
+  /* 연호 왼쪽에 작게, 연도 숫자는 오른쪽에 크게 배치 */
+  .nav-item .item-text { 
+    display: flex;
+    align-items: baseline;
+    justify-content: flex-end;
+    gap: 0.8vw;
+    width: 100%;
+    letter-spacing: -0.05em;
+  }
+
+  .nav-item .era-text {
+    font-family: 'Pretendard', sans-serif;
+    font-size: 1vw; /* 한글 연호 작게 */
+    color: #555555; /* 어두운 회색 */
+    font-weight: 700;
+    text-shadow: none; /* 그림자 제거 */
+  }
+
+  .nav-item .year-text {
+    font-family: 'Pretendard', sans-serif;
+    font-size: 2.2vw; /* 연도 숫자 크게 */
+    color: #000000; /* 검은색 */
+    font-weight: 900;
+    text-shadow: none; /* 그림자 제거 */
+  }
+
+  /* 우측 레이어 상하 마스크 비활성화 */
+
+  /* 좌측 영상 영역: 화면을 가득 채우며 우측 잘림 의도 */
+  .view-panel { 
+    position: absolute;
+    top: 0; left: 0;
+    width: 100vw; 
+    height: 100vh; 
+    z-index: 1;
+    overflow: hidden;
+  }
+  
+  video { 
+    width: 100%; 
+    height: 100%; 
+    object-fit: cover; /* 가득 채우기, 비율 유지 후 넘치는 부분 커팅 */
+    pointer-events: none;
+  }
+
+  /* 하단 동기화 슬라이더 스타일 */
+  .bottom-slider-wrap {
+    position: absolute;
+    bottom: 3vh;
+    left: 5vw;
+    width: 65vw; /* 우측 네비게이터를 피해서 배치 */
+    z-index: 12;
+    display: flex;
+    align-items: center;
+    height: 20px;
+  }
+
+  .sync-slider {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.3);
+    border-radius: 2px;
+    outline: none;
+    transition: background 0.3s;
+    cursor: pointer;
+    backdrop-filter: blur(5px);
+  }
+
+  .sync-slider:hover {
+    background: rgba(255, 255, 255, 0.5);
+  }
+
+  .sync-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #ffffff;
+    box-shadow: 0 0 6px rgba(0, 0, 0, 0.5);
+    cursor: pointer;
+    transition: transform 0.1s;
+  }
+
+  .sync-slider::-webkit-slider-thumb:hover {
+    transform: scale(1.3);
+  }
+</style>
+</head>
+<body>
+
+<!-- 고급스러운 미디어 프리로더 오버레이 추가 -->
+<div id="loadingOverlay" style="position: absolute; top:0; left:0; width:100vw; height:100vh; background:#000000; z-index:100; display:flex; flex-direction:column; justify-content:center; align-items:center; font-family:'Pretendard', sans-serif;">
+  <div style="font-size: 1.5vw; color: #ffffff; margin-bottom: 20px; font-weight: 700; letter-spacing: -0.03em;">종묘 타임라인 미디어 로드 중...</div>
+  <div style="width: 300px; height: 6px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden; position: relative;">
+    <div id="progressBar" style="width: 0%; height: 100%; background: #ffffff; border-radius: 3px; transition: width 0.1s ease;"></div>
+  </div>
+  <div id="progressPercent" style="font-size: 1vw; color: #888888; margin-top: 10px; font-weight: 500;">0%</div>
+  <div style="font-size: 0.9vw; color: #666666; margin-top: 25px; font-weight: 400; letter-spacing: -0.02em; text-align: center; line-height: 1.6; max-width: 80vw;">
+    * 본 시연은 대용량 고해상도 미디어를 브라우저 메모리에 선행 로드합니다.<br>
+    로딩은 **최초 1회만 진행**되며, 완료 후에는 버퍼링 없이 즉시 원활하게 감상하실 수 있습니다.
+  </div>
+</div>
+
+<div class="kiosk-wrap" id="kioskLayout">
+  <div class="nav-container-box">
+    <div class="nav-panel" id="timeNav"></div>
+  </div>
+
+  <div class="bottom-slider-wrap">
+    <input type="range" id="syncSlider" class="sync-slider" min="0" max="100" step="0.01" value="0">
+  </div>
+
+  <div class="view-panel">
+    <video id="mainVideo" muted preload="auto"></video>
+  </div>
+</div>
+
+<script>
+  // [설정 파라미터] 영상 싱크 및 보정 변수
+  const FPS = 30;
+  const TIME_OFFSET = 0.0; // 시간 오프셋 값 조정 변수 (초 단위)
+  const PLAY_OFFSET_FRAMES = -20; // 사용자 요청: AE 기준점 대비 20프레임씩 당겨서 재생 (단, 음수가 되지 않도록 제어)
+
+  // 75개 각 연도 영상의 실제 프레임 수 목록
+  const videoFramesList = [
+    151, 150, 150, 150, 150, 150, 150, 150, 150, 150, 150, 150, 180, 150, 150, 150,
+    150, 210, 210, 271, 150, 150, 150, 150, 150, 150, 270, 150, 150, 150, 150, 150,
+    150, 210, 210, 150, 180, 150, 150, 150, 150, 150, 210, 210, 150, 150, 150, 150,
+    150, 150, 150, 150, 150, 150, 150, 210, 120, 150, 150, 150, 150, 150, 150, 150,
+    150, 150, 150, 270, 150, 150, 150, 150, 150, 150, 150
+  ];
+
+  // CMD 리스트에서 추출한 순차 연도 데이터 목록 (총 75개 파일)
+  const rawYears = [
+    1395, 1410, 1411, 1421, 1424, 1452, 1454, 1457, 1470, 1472, 1476, 1485, 1496, 1497, 
+    1501, 1506, 1513, 1532, 1546, 1547, 1567, 1569, 1577, 1580, 1592, 1608, 1610, 1615, 
+    1616, 1623, 1634, 1635, 1651, 1661, 1667, 1669, 1676, 1681, 1683, 1686, 1690, 1698, 
+    1722, 1726, 1729, 1732, 1739, 1759, 1772, 1778, 1782, 1800, 1802, 1807, 1823, 1835, 
+    1836, 1837, 1851, 1857, 1858, 1866, 1875, 1880, 1890, 1892, 1897, 1899, 1906, 1908, 
+    1921, 1928, 1968, 1973, 1991
+  ];
+
+  // 역사적 연호 자동 계산 함수 기틀
+  function getEra(year) {
+    if (year === 1395) return "태조 4년";
+    if (year <= 1400) return `정종 ${year - 1398 + 1}년`;
+    if (year <= 1418) return `태종 ${year - 1400 + 1}년`;
+    if (year <= 1450) return `세종 ${year - 1418 + 1}년`;
+    if (year <= 1452) return `문종 ${year - 1450 + 1}년`;
+    if (year <= 1455) return `단종 ${year - 1452 + 1}년`;
+    if (year <= 1468) return `세조 ${year - 1455 + 1}년`;
+    if (year <= 1469) return `예종 ${year - 1468 + 1}년`;
+    if (year <= 1494) return `성종 ${year - 1469 + 1}년`;
+    if (year <= 1506) return `연산군 ${year - 1494 + 1}년`;
+    if (year <= 1544) return `중종 ${year - 1506 + 1}년`;
+    if (year <= 1545) return `인종 ${year - 1544 + 1}년`;
+    if (year <= 1567) return `명종 ${year - 1545 + 1}년`;
+    if (year <= 1608) return `선조 ${year - 1567 + 1}년`;
+    if (year <= 1623) return `광해군 ${year - 1608 + 1}년`;
+    if (year <= 1649) return `인조 ${year - 1623 + 1}년`;
+    if (year <= 1659) return `효종 ${year - 1649 + 1}년`;
+    if (year <= 1674) return `현종 ${year - 1659 + 1}년`;
+    if (year <= 1720) return `숙종 ${year - 1674 + 1}년`;
+    if (year <= 1724) return `경종 ${year - 1720 + 1}년`;
+    if (year <= 1776) return `영조 ${year - 1724 + 1}년`;
+    if (year <= 1800) return `정조 ${year - 1776 + 1}년`;
+    if (year <= 1834) return `순조 ${year - 1800 + 1}년`;
+    if (year <= 1849) return `헌종 ${year - 1834 + 1}년`;
+    if (year <= 1863) return `철종 ${year - 1849 + 1}년`;
+    if (year <= 1896) return `고종 ${year - 1863 + 1}년`;
+    if (year === 1897) return "광무 1년";
+    if (year === 1899) return "광무 3년";
+    if (year === 1906) return "광무 10년";
+    if (year === 1908) return "융희 2년";
+    if (year === 1921) return "일제강점기";
+    if (year === 1928) return "일제강점기";
+    return "대한민국";
+  }
+
+  // AE 확인 값 매핑 (1395년 150f, 1410년 280f, 1991년 11640f) 및 5.49315 평균 오버랩 반영 계산
+  const AE_START_FRAME_1395 = 150;
+  const AE_START_FRAME_1410 = 280;
+  const TRANSITION_OVERLAP = 401 / 73; // 1410 ~ 1991 구간의 평균 전환 오버랩 프레임 수
+  
+  const startFrames = [AE_START_FRAME_1395];
+  let currFrameAccum = AE_START_FRAME_1410;
+  startFrames.push(Math.round(currFrameAccum));
+  
+  for (let i = 2; i < 75; i++) {
+    currFrameAccum = currFrameAccum + videoFramesList[i-1] - TRANSITION_OVERLAP;
+    startFrames.push(Math.round(currFrameAccum));
+  }
+
+  // 타임라인 데이터 빌드 (재생용 playFrame 및 timecode 산출)
+  const timelineData = rawYears.map((year, index) => {
+    const aeStart = startFrames[index];
+    const playFrame = Math.max(0, aeStart + PLAY_OFFSET_FRAMES);
+    
+    return {
+      year: year,
+      era: getEra(year),
+      aeStartFrame: aeStart,
+      timecode: playFrame / FPS
+    };
+  });
+
+  const navContainer = document.getElementById('timeNav');
+  const video = document.getElementById('mainVideo');
+
+  // 각 연도별 중앙 정렬 시의 정확한 scrollTop 값들을 저장하는 배열
+  const targetScrollTops = [];
+
+  function calculateTargetScrollTops() {
+    targetScrollTops.length = 0; // 초기화
+    const containerHeight = navContainer.clientHeight;
+    const items = document.querySelectorAll('.nav-item');
+    items.forEach((item) => {
+      const itemTop = item.offsetTop;
+      const itemHeight = item.clientHeight;
+      const targetScrollTop = itemTop - (containerHeight / 2) + (itemHeight / 2);
+      targetScrollTops.push(targetScrollTop);
+    });
+  }
+
+  // 특정 scrollTop에 대응하는 선형 보간된 타임코드 계산 ("촤라락" 고속영상 효과의 핵심)
+  function calculateTimecodeFromScroll(scrollTop) {
+    if (targetScrollTops.length === 0) return 0;
+    
+    // 첫 항목보다 이전 스크롤일 때
+    if (scrollTop <= targetScrollTops[0]) {
+      return timelineData[0].timecode;
+    }
+    
+    const lastIdx = targetScrollTops.length - 1;
+    // 마지막 항목보다 이후 스크롤일 때
+    if (scrollTop >= targetScrollTops[lastIdx]) {
+      return timelineData[lastIdx].timecode;
+    }
+    
+    // 현재 스크롤 위치가 속해 있는 구간 찾기
+    let idx = 0;
+    for (let i = 0; i < lastIdx; i++) {
+      if (scrollTop >= targetScrollTops[i] && scrollTop <= targetScrollTops[i+1]) {
+        idx = i;
+        break;
+      }
+    }
+    
+    // 선형 보간 (t0, t1 구간에서의 비율 산출)
+    const t0 = targetScrollTops[idx];
+    const t1 = targetScrollTops[idx+1];
+    const ratio = (scrollTop - t0) / (t1 - t0); // 0.0 ~ 1.0
+    
+    const time0 = timelineData[idx].timecode;
+    const time1 = timelineData[idx+1].timecode;
+    
+    return time0 + ratio * (time1 - time0);
+  }
+
+  // 다이얼 인터페이스 동적 생성 (연호와 연도를 분리하여 배치)
+  function renderNav() {
+    const paddingStart = document.createElement('div');
+    paddingStart.style.minHeight = '46vh'; // 상단 더미 여백 공간 (8.5vh에 맞춰 약 46vh로 최적화)
+    navContainer.appendChild(paddingStart);
+
+    timelineData.forEach((data) => {
+      const item = document.createElement('div');
+      item.className = 'nav-item';
+      item.dataset.time = data.timecode;
+      item.innerHTML = `<div class="item-text"><span class="era-text">${data.era}</span><span class="year-text">${data.year}</span></div>`;
+      
+      // 클릭 시 직접 이동 기능 추가
+      item.addEventListener('click', (e) => {
+        // 드래그 거리 판별: 마우스 다운/업 Y 차이가 10px 미만인 경우만 클릭으로 간주
+        if (Math.abs(e.pageY - startClickY) < 10) {
+          const containerHeight = navContainer.clientHeight;
+          const itemTop = item.offsetTop;
+          const itemHeight = item.clientHeight;
+          const targetScrollTop = itemTop - (containerHeight / 2) + (itemHeight / 2);
+          
+          smoothScrollTo(targetScrollTop, 600); // 600ms 동안 촤라락 감기도록 스크롤 시작
+        }
+      });
+
+      navContainer.appendChild(item);
+    });
+
+    const paddingEnd = document.createElement('div');
+    paddingEnd.style.minHeight = '46vh'; // 하단 더미 여백 공간
+    navContainer.appendChild(paddingEnd);
+  }
+
+  // 부드러운 커스텀 스크롤 애니메이션 함수 (중간 프레임들을 60fps로 강제 업데이트하여 비디오와 연속 연동)
+  function smoothScrollTo(targetTop, duration = 600) {
+    if (animationFrameId) cancelAnimationFrame(animationFrameId);
+    navContainer.style.scrollSnapType = 'none';
+    scrollVelocity = 0; // 기존 관성 속도 초기화
+    
+    const startTop = navContainer.scrollTop;
+    const distance = targetTop - startTop;
+    const startTime = performance.now();
+    
+    function animate(currentTime) {
+      const elapsed = currentTime - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      
+      // Ease Out Quad 곡선 적용
+      const ease = progress * (2 - progress);
+      
+      navContainer.scrollTop = startTop + distance * ease;
+      
+      if (progress < 1) {
+        animationFrameId = requestAnimationFrame(animate);
+      } else {
+        navContainer.style.scrollSnapType = 'y mandatory';
+      }
+    }
+    
+    animationFrameId = requestAnimationFrame(animate);
+  }
+
+  // 드래그 및 관성 스크롤 기능 구현 (손맛 컴포넌트 로직)
+  let isPressed = false;
+  let startY;
+  let startScrollTop;
+  let startClickY = 0; // 클릭 판별용 Y 좌표
+  let velocity = 0;
+  let lastY = 0;
+  let lastTime = 0;
+  let animationFrameId = null;
+  let scrollVelocity = 0; // 통합 관성 속도 (px per frame)
+
+  renderNav();
+
+  navContainer.addEventListener('mousedown', (e) => {
+    isPressed = true;
+    startY = e.pageY - navContainer.offsetTop;
+    startScrollTop = navContainer.scrollTop;
+    startClickY = e.pageY; // mousedown 위치 저장
+    navContainer.style.scrollSnapType = 'none'; // 드래그 중에는 스냅 해제
+    
+    lastY = e.pageY;
+    lastTime = performance.now();
+    velocity = 0;
+    scrollVelocity = 0; // 기존 관성 정지
+    if (animationFrameId) cancelAnimationFrame(animationFrameId);
+  });
+
+  navContainer.addEventListener('mouseleave', () => { if (isPressed) releaseDrag(); });
+  navContainer.addEventListener('mouseup', () => { if (isPressed) releaseDrag(); });
+
+  navContainer.addEventListener('mousemove', (e) => {
+    if (!isPressed) return;
+    e.preventDefault();
+    const currentY = e.pageY - navContainer.offsetTop;
+    const distance = (currentY - startY) * 1.5; // 드래그 가속도 계수
+    navContainer.scrollTop = startScrollTop - distance;
+
+    // 관성 속도 연산
+    const now = performance.now();
+    const elapsed = now - lastTime;
+    if (elapsed > 0) {
+      velocity = (e.pageY - lastY) / elapsed; // px per ms
+    }
+    lastY = e.pageY;
+    lastTime = now;
+  });
+
+  function releaseDrag() {
+    isPressed = false;
+    navContainer.style.scrollSnapType = 'none'; // 관성 스크롤 중에는 스냅 비활성화
+    startInertia(velocity);
+  }
+
+  // 통합 관성 스크롤 물리학 루프
+  function startInertia(initialVelocity) {
+    if (animationFrameId) cancelAnimationFrame(animationFrameId);
+    
+    scrollVelocity = initialVelocity * 16.7; // px per frame
+    
+    // 최대 속도 임계치 적용
+    const maxVel = 40;
+    if (scrollVelocity > maxVel) scrollVelocity = maxVel;
+    if (scrollVelocity < -maxVel) scrollVelocity = -maxVel;
+    
+    runInertiaLoop();
+  }
+
+  function runInertiaLoop() {
+    if (isPressed) return; // 다시 누르면 즉시 정지
+    
+    const friction = 0.95; // 마찰 계수 (더 쫀득하고 부드러운 스크롤 느낌)
+    navContainer.scrollTop -= scrollVelocity;
+    scrollVelocity *= friction;
+    
+    if (Math.abs(scrollVelocity) > 0.2) {
+      animationFrameId = requestAnimationFrame(runInertiaLoop);
+    } else {
+      scrollVelocity = 0;
+      snapToNearest();
+    }
+  }
+
+  function snapToNearest() {
+    navContainer.style.scrollSnapType = 'y mandatory'; // 스냅 활성화
+    
+    const navCenter = navContainer.getBoundingClientRect().top + (navContainer.clientHeight / 2);
+    let closestItem = null;
+    let minDistance = Infinity;
+
+    const items = document.querySelectorAll('.nav-item');
+    items.forEach(item => {
+      const itemRect = item.getBoundingClientRect();
+      const itemCenter = itemRect.top + (itemRect.height / 2);
+      const distance = Math.abs(navCenter - itemCenter);
+      
+      if (distance < minDistance) {
+        minDistance = distance;
+        closestItem = item;
+      }
+    });
+
+    if (closestItem) {
+      const containerHeight = navContainer.clientHeight;
+      const itemTop = closestItem.offsetTop;
+      const itemHeight = closestItem.clientHeight;
+      const targetScrollTop = itemTop - (containerHeight / 2) + (itemHeight / 2);
+      
+      smoothScrollTo(targetScrollTop, 400); // 400ms 스냅 애니메이션 적용
+    }
+  }
+
+  // 마우스 휠 관성 스크롤 효과 추가
+  navContainer.addEventListener('wheel', (e) => {
+    e.preventDefault(); // 기본 브라우저 스크롤 가로채기
+    isPressed = false;
+    navContainer.style.scrollSnapType = 'none';
+    
+    const wheelFactor = 0.15; // 휠 속도 반응 계수
+    
+    if (Math.abs(scrollVelocity) > 0) {
+      // 이미 휠 관성이 돌고 있을 때 속도 누적
+      scrollVelocity -= e.deltaY * wheelFactor;
+      const maxVel = 40;
+      if (scrollVelocity > maxVel) scrollVelocity = maxVel;
+      if (scrollVelocity < -maxVel) scrollVelocity = -maxVel;
+    } else {
+      // 멈춰있는 상태에서 휠을 굴렸을 때 관성 시작
+      startInertia(-e.deltaY * wheelFactor / 16.7);
+    }
+  }, { passive: false });
+
+  // 타임라인 내 중앙 배치 및 투명도 페이드 업데이트 로직
+  let targetVideoTime = 0;
+  let currentVideoTime = 0;
+  const items = document.querySelectorAll('.nav-item');
+
+  function updateTimeline() {
+    const scrollTop = navContainer.scrollTop;
+    
+    // 실시간 연속 시간코드 업데이트 ("촤라락" 고속영상 재생 효과)
+    targetVideoTime = calculateTimecodeFromScroll(scrollTop);
+
+    const navCenter = navContainer.getBoundingClientRect().top + (navContainer.clientHeight / 2);
+    const halfHeight = navContainer.clientHeight / 2;
+    let closestItem = null;
+    let minDistance = Infinity;
+
+    items.forEach(item => {
+      const itemRect = item.getBoundingClientRect();
+      const itemCenter = itemRect.top + (itemRect.height / 2);
+      const distance = Math.abs(navCenter - itemCenter);
+      
+      if (distance < minDistance) {
+        minDistance = distance;
+        closestItem = item;
+      }
+      
+      // 가운데(navCenter)에서 멀어질수록 오파시티와 스케일을 줄임
+      let ratio = 1 - (distance / halfHeight);
+      if (ratio < 0) ratio = 0;
+      
+      // 오파시티 곡선 및 크기 변환 적용 (1.8 제곱으로 더 선명하게 페이드)
+      const opacity = Math.pow(ratio, 1.8);
+      const scale = 0.8 + 0.3 * ratio; // 0.8 ~ 1.1
+
+      item.style.opacity = opacity.toFixed(3);
+      item.style.transform = `scale(${scale.toFixed(3)})`;
+    });
+
+    if (closestItem && !closestItem.classList.contains('active')) {
+      items.forEach(i => i.classList.remove('active'));
+      closestItem.classList.add('active');
+    }
+  }
+
+  // 초기 렌더링 및 페이지 로드 완료 시 정확한 높이 값 계산
+  calculateTargetScrollTops();
+  updateTimeline();
+
+  window.addEventListener('load', () => {
+    calculateTargetScrollTops();
+    updateTimeline();
+  });
+
+  window.addEventListener('resize', () => {
+    calculateTargetScrollTops();
+    updateTimeline();
+  });
+
+  video.addEventListener('loadedmetadata', () => {
+    calculateTargetScrollTops();
+    updateTimeline();
+  });
+
+  navContainer.addEventListener('scroll', updateTimeline);
+
+  // 하단 슬라이더 연동 로직
+  let isSliderDragging = false;
+  const slider = document.getElementById('syncSlider');
+
+  slider.addEventListener('mousedown', () => { isSliderDragging = true; });
+  slider.addEventListener('mouseup', () => { 
+    isSliderDragging = false; 
+    snapToNearest();
+  });
+  slider.addEventListener('touchstart', () => { isSliderDragging = true; });
+  slider.addEventListener('touchend', () => { 
+    isSliderDragging = false; 
+    snapToNearest();
+  });
+
+  slider.addEventListener('input', () => {
+    if (!video.duration) return;
+    const pct = parseFloat(slider.value);
+    const targetTime = (pct / 100) * video.duration;
+    targetVideoTime = targetTime;
+    
+    // 가장 가까운 연도 찾기
+    let closestIndex = 0;
+    let minDiff = Infinity;
+    timelineData.forEach((data, idx) => {
+      const diff = Math.abs(data.timecode - targetTime);
+      if (diff < minDiff) {
+        minDiff = diff;
+        closestIndex = idx;
+      }
+    });
+    
+    const items = document.querySelectorAll('.nav-item');
+    if (items[closestIndex]) {
+      const item = items[closestIndex];
+      const containerHeight = navContainer.clientHeight;
+      const itemTop = item.offsetTop;
+      const itemHeight = item.clientHeight;
+      const targetScrollTop = itemTop - (containerHeight / 2) + (itemHeight / 2);
+      
+      navContainer.style.scrollSnapType = 'none';
+      navContainer.scrollTop = targetScrollTop;
+    }
+  });
+
+  setTimeout(() => navContainer.dispatchEvent(new Event('scroll')), 100);
+
+  // 고성능 Lerp 타임 탐색 프레임 렌더러
+  function smoothScrubLoop() {
+    if (!video.paused) video.pause(); 
+
+    currentVideoTime += (targetVideoTime - currentVideoTime) * 0.12; 
+
+    if (video.readyState >= 1) {
+      if (Math.abs(targetVideoTime - currentVideoTime) > 0.005) {
+        video.currentTime = currentVideoTime;
+      }
+    }
+    
+    // 슬라이더 값 동기화
+    if (video.duration && !isSliderDragging) {
+      slider.value = (currentVideoTime / video.duration) * 100;
+    }
+    
+    requestAnimationFrame(smoothScrubLoop);
+  }
+
+  // --- 대용량 비디오 프리로더 (Blob In-Memory Playback) 구현 ---
+  // 웹 시연 시 (GitHub Pages / Cloudflare Pages 등) 비디오 파일을 동일 서버에 올려 CORS 문제를 우회하고 선행 로드합니다.
+  const videoUrl = "video.mp4";
+  const req = new XMLHttpRequest();
+  req.open('GET', videoUrl, true);
+  req.responseType = 'blob';
+
+  req.onload = function() {
+    if (this.status === 200) {
+      const videoBlob = this.response;
+      const vidURL = URL.createObjectURL(videoBlob);
+      video.src = vidURL;
+      
+      // 로딩 바 완료 애니메이션
+      document.getElementById('progressBar').style.width = '100%';
+      document.getElementById('progressPercent').innerText = '100%';
+      
+      setTimeout(() => {
+        const overlay = document.getElementById('loadingOverlay');
+        overlay.style.transition = 'opacity 0.5s ease';
+        overlay.style.opacity = '0';
+        setTimeout(() => {
+          overlay.style.display = 'none';
+          // 메모리에 올라간 상태이므로 높이 재연산 및 스냅 적용
+          calculateTargetScrollTops();
+          updateTimeline();
+        }, 500);
+      }, 300);
+    }
+  };
+
+  req.onprogress = function(e) {
+    if (e.lengthComputable) {
+      const percentComplete = (e.loaded / e.total) * 100;
+      document.getElementById('progressBar').style.width = percentComplete + '%';
+      document.getElementById('progressPercent').innerText = Math.round(percentComplete) + '%';
+    }
+  };
+
+  req.onerror = function() {
+    console.error("비디오 프리로드 실패 (로컬 file:// 실행 시 CORS 가능성). 직접 로드 폴백 실행.");
+    document.getElementById('loadingOverlay').style.display = 'none';
+    video.src = "video.mp4"; // 로컬 오프라인 폴백을 위해 로컬 파일명 강제 대입
+  };
+
+  req.send();
+
+  requestAnimationFrame(smoothScrubLoop);
+</script>
+</body>
+</html>
