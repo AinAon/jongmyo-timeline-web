@@ -1,1 +1,5 @@
 *.mp4
+package.json
+main.js
+dist/
+종묘타임라인키오스크/
