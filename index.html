@@ -738,16 +738,12 @@
     requestAnimationFrame(smoothScrubLoop);
   }
 
-  // --- 비디오 로드 설정 (로컬 환경과 원격 호스팅 환경 자동 감지) ---
-  // 로컬(file://) 실행 시 폴더 내의 비디오 파일을 참조하고, 웹 호스팅(GitHub Pages 등) 환경에서는 Dropbox URL을 직접 참조합니다.
+  // --- 비디오 직접 로드 (원격 Dropbox URL) ---
+  // 웹 호스팅(GitHub Pages 등) 환경에서 웹 브라우저를 통해 Dropbox URL로부터 비디오를 다운로드받습니다.
   const DROPBOX_URL = "https://www.dropbox.com/scl/fi/oxwn6t58o2k1i165gtmmk/_-_-_v003.mp4?rlkey=om8dol8j1ifwgk7fxir3ek62i&dl=1";
-  const LOCAL_VIDEO = "키오스크_한글_랜드소프트버전_v003.mp4";
-
-  const isLocalEnv = window.location.protocol === 'file:';
-  const VIDEO_SRC = isLocalEnv ? LOCAL_VIDEO : DROPBOX_URL;
 
   video.preload = "auto";
-  video.src = VIDEO_SRC;
+  video.src = DROPBOX_URL;
   video.load();
 
   function showStartButton() {
@@ -779,9 +775,8 @@
     });
   }
 
-  // buffered 기반 다운로드 진행률 표시
+  // buffered 기반 다운로드 진행률 표시 (100% 다운로드 완료 시까지 대기)
   let progressInterval = setInterval(() => {
-    const isLocal = window.location.protocol === 'file:';
     if (!video.duration) return;
     
     const buffered = video.buffered;
@@ -789,11 +784,6 @@
     
     if (buffered.length > 0) {
       pct = Math.min(100, Math.round((buffered.end(buffered.length - 1) / video.duration) * 100));
-    }
-    
-    // 로컬 환경이고 비디오 재생 준비가 충분히 되었으면 버퍼 100% 대기 없이 즉시 로드 완료 처리
-    if (isLocal && video.readyState >= 3) {
-      pct = 100;
     }
     
     document.getElementById('progressBar').style.width = pct + '%';
