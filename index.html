@@ -743,13 +743,12 @@
     requestAnimationFrame(smoothScrubLoop);
   }
 
-  // --- 비디오 직접 로드 (Dropbox 원본 링크) ---
-  // <video src>에 직접 넣으면 CORS 없이 브라우저가 다운로드합니다.
-  // video.buffered 로 다운로드 진행률을 추정하고, 완료 후 프레임 워밍업을 진행합니다.
-  const DROPBOX_URL = "https://www.dropbox.com/scl/fi/kq3ykczs1larv41cef0ki/_-_-_v002.mp4?rlkey=bv31px9zj1eisujjvdrbaiizw&dl=1";
+  // --- 비디오 직접 로드 (로컬 상대 경로 또는 원격 URL) ---
+  // 로컬에서 파일 두 개(index.html, 영상 파일)를 같은 폴더에 두고 직접 열 수 있도록 상대 경로를 지정합니다.
+  const VIDEO_SRC = "키오스크_한글_랜드소프트버전_v002.mp4";
 
   video.preload = "auto";
-  video.src = DROPBOX_URL;
+  video.src = VIDEO_SRC;
   video.load();
 
   function showStartButton() {
@@ -783,12 +782,27 @@
 
   // buffered 기반 다운로드 진행률 표시
   let progressInterval = setInterval(() => {
+    const isLocal = window.location.protocol === 'file:';
     if (!video.duration) return;
+    
     const buffered = video.buffered;
+    let pct = 0;
+    
     if (buffered.length > 0) {
-      const pct = Math.min(100, Math.round((buffered.end(buffered.length - 1) / video.duration) * 100));
-      document.getElementById('progressBar').style.width = pct + '%';
-      document.getElementById('progressPercent').innerText = pct + '%';
+      pct = Math.min(100, Math.round((buffered.end(buffered.length - 1) / video.duration) * 100));
+    }
+    
+    // 로컬 환경이고 비디오 재생 준비가 충분히 되었으면 버퍼 100% 대기 없이 즉시 로드 완료 처리
+    if (isLocal && video.readyState >= 3) {
+      pct = 100;
+    }
+    
+    document.getElementById('progressBar').style.width = pct + '%';
+    document.getElementById('progressPercent').innerText = pct + '%';
+    
+    if (pct >= 100) {
+      clearInterval(progressInterval);
+      setTimeout(showStartButton, 300);
     }
   }, 500);
 
