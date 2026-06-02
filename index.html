@@ -240,14 +240,6 @@
   const TIME_OFFSET = 0.0; // 시간 오프셋 값 조정 변수 (초 단위)
   const PLAY_OFFSET_FRAMES = -20; // 사용자 요청: AE 기준점 대비 20프레임씩 당겨서 재생 (단, 음수가 되지 않도록 제어)
 
-  // 75개 각 연도 영상의 실제 프레임 수 목록
-  const videoFramesList = [
-    151, 150, 150, 150, 150, 150, 150, 150, 150, 150, 150, 150, 180, 150, 150, 150,
-    150, 210, 210, 271, 150, 150, 150, 150, 150, 150, 270, 150, 150, 150, 150, 150,
-    150, 210, 210, 150, 180, 150, 150, 150, 150, 150, 210, 210, 150, 150, 150, 150,
-    150, 150, 150, 150, 150, 150, 150, 210, 120, 150, 150, 150, 150, 150, 150, 150,
-    150, 150, 150, 270, 150, 150, 150, 150, 150, 150, 150
-  ];
 
   // CMD 리스트에서 추출한 순차 연도 데이터 목록 (총 75개 파일)
   const rawYears = [
@@ -296,29 +288,23 @@
     return "대한민국";
   }
 
-  // AE 확인 값 매핑 (1395년 150f, 1410년 280f, 1991년 11640f) 및 5.49315 평균 오버랩 반영 계산
-  const AE_START_FRAME_1395 = 150;
-  const AE_START_FRAME_1410 = 280;
-  const TRANSITION_OVERLAP = 401 / 73; // 1410 ~ 1991 구간의 평균 전환 오버랩 프레임 수
-  
-  const startFrames = [AE_START_FRAME_1395];
-  let currFrameAccum = AE_START_FRAME_1410;
-  startFrames.push(Math.round(currFrameAccum));
-  
-  for (let i = 2; i < 75; i++) {
-    currFrameAccum = currFrameAccum + videoFramesList[i-1] - TRANSITION_OVERLAP;
-    startFrames.push(Math.round(currFrameAccum));
-  }
+  // video_frames.csv 의 CumulativeFrames 컬럼을 직접 사용 (정확한 실제 영상 기준 시작 프레임)
+  const startFrames = [
+    0, 149, 297, 445, 593, 741, 889, 1037, 1185, 1333, 1481, 1629,
+    1777, 1955, 2103, 2251, 2399, 2547, 2755, 2963, 3232, 3380, 3528,
+    3676, 3824, 3972, 4120, 4388, 4536, 4684, 4832, 4980, 5128, 5276,
+    5484, 5692, 5840, 6018, 6166, 6314, 6462, 6610, 6758, 6966, 7174,
+    7322, 7470, 7618, 7766, 7914, 8062, 8210, 8358, 8506, 8654, 8802,
+    9010, 9128, 9276, 9424, 9572, 9720, 9868, 10016, 10164, 10312, 10460,
+    10608, 10876, 11024, 11172, 11320, 11468, 11616, 11764
+  ];
 
-  // 타임라인 데이터 빌드 (재생용 playFrame 및 timecode 산출)
+  // 타임라인 데이터 빌드 (PLAY_OFFSET_FRAMES 적용하여 재생 시점 보정)
   const timelineData = rawYears.map((year, index) => {
-    const aeStart = startFrames[index];
-    const playFrame = Math.max(0, aeStart + PLAY_OFFSET_FRAMES);
-    
+    const playFrame = Math.max(0, startFrames[index] + PLAY_OFFSET_FRAMES);
     return {
       year: year,
       era: getEra(year),
-      aeStartFrame: aeStart,
       timecode: playFrame / FPS
     };
   });
