@@ -57,7 +57,7 @@
 
   /* 다이얼 아이템 스타일 (우측 정렬, 줄바꿈 없음) */
   .nav-item {
-    min-height: 8.5vh; /* 기존 12vh에서 8.5vh로 줄여서 더 촘촘하고 컴팩트하게 배치 */
+    min-height: 14vh;
     display: flex; 
     justify-content: flex-end;
     align-items: center;
@@ -65,9 +65,9 @@
     padding-left: 1.5vw;
     scroll-snap-align: center;
     transform-origin: right center;
-    white-space: nowrap; /* 줄바꿈 절대 방지 */
+    white-space: nowrap;
     width: 100%;
-    cursor: pointer; /* 클릭이 가능하므로 커서 포인터 추가 */
+    cursor: pointer;
   }
   
   /* 연호 왼쪽에 작게, 연도 숫자는 오른쪽에 크게 배치 */
@@ -130,9 +130,9 @@
   /* 하단 동기화 슬라이더 스타일 */
   .bottom-slider-wrap {
     position: absolute;
-    bottom: 3vh;
+    bottom: 0.5vh;
     left: 5vw;
-    width: 65vw; /* 우측 네비게이터를 피해서 배치 */
+    width: 65vw;
     z-index: 12;
     display: flex;
     align-items: center;
@@ -379,7 +379,7 @@
   // 다이얼 인터페이스 동적 생성 (연호와 연도를 분리하여 배치)
   function renderNav() {
     const paddingStart = document.createElement('div');
-    paddingStart.style.minHeight = '46vh'; // 상단 더미 여백 공간 (8.5vh에 맞춰 약 46vh로 최적화)
+    paddingStart.style.minHeight = '49vh';
     navContainer.appendChild(paddingStart);
 
     timelineData.forEach((data) => {
@@ -405,7 +405,7 @@
     });
 
     const paddingEnd = document.createElement('div');
-    paddingEnd.style.minHeight = '46vh'; // 하단 더미 여백 공간
+    paddingEnd.style.minHeight = '49vh';
     navContainer.appendChild(paddingEnd);
   }
 
@@ -685,10 +685,10 @@
 
   // 고성능 Lerp 타임 탐색 프레임 렌더러
   function smoothScrubLoop() {
-    if (!video.paused) video.pause(); 
+    if (!video.paused) video.pause();
 
-    // 슬라이더 조작 시 반응성 향상을 위해 Lerp 가속
-    const lerpFactor = isSliderDragging ? 0.3 : 0.15;
+    // 슬라이더는 빠르게, 타임라인 스크롤은 느리게 반응 (중간 전환 프레임이 보이도록)
+    const lerpFactor = isSliderDragging ? 0.3 : 0.06;
 
     if (Math.abs(targetVideoTime - currentVideoTime) < 0.001) {
       currentVideoTime = targetVideoTime;
@@ -696,18 +696,18 @@
       currentVideoTime += (targetVideoTime - currentVideoTime) * lerpFactor;
     }
 
-    // 브라우저의 디코딩 상태(video.seeking)를 확인하여 이전 프레임의 탐색이 완료된 경우에만 새로운 탐색 요청을 보냄 (버벅임 및 프레임 밀림 원천 방지)
-    if (video.readyState >= 1 && !video.seeking) {
-      if (Math.abs(targetVideoTime - currentVideoTime) > 0.005) {
+    // seeking 여부와 관계없이 매 프레임 업데이트 → 스크롤 중 실시간 프레임 전환
+    if (video.readyState >= 1) {
+      if (Math.abs(video.currentTime - currentVideoTime) > 1 / FPS) {
         video.currentTime = currentVideoTime;
       }
     }
-    
+
     // 슬라이더 값 동기화
     if (video.duration && !isSliderDragging) {
       slider.value = (currentVideoTime / video.duration) * 100;
     }
-    
+
     requestAnimationFrame(smoothScrubLoop);
   }
 
