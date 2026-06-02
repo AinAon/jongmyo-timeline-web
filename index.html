@@ -711,33 +711,33 @@
     requestAnimationFrame(smoothScrubLoop);
   }
 
-  // --- 대용량 비디오 프리로더 (Blob In-Memory Playback) 구현 ---
-  // 웹 시연 시 (GitHub Pages / Cloudflare Pages 등) 비디오 파일을 동일 서버에 올려 CORS 문제를 우회하고 선행 로드합니다.
-  const videoUrl = "video.mp4";
-  const req = new XMLHttpRequest();
-  req.open('GET', videoUrl, true);
-  req.responseType = 'blob';
+  // --- 비디오 직접 로드 (Dropbox 원본 링크) ---
+  // <video src>에 직접 넣으면 CORS 없이 브라우저가 다운로드합니다.
+  // video.buffered 로 다운로드 진행률을 추정하고, 완료 후 프레임 워밍업을 진행합니다.
+  const DROPBOX_URL = "https://www.dropbox.com/scl/fi/8x3jftihpg1lfd8jgrn1g/_-_-_v001.mp4?rlkey=l1lxtlt0ne8zf9xax8f21qa0l&st=w5mptzpk&dl=1";
+
+  video.preload = "auto";
+  video.src = DROPBOX_URL;
+  video.load();
 
   function showStartButton() {
     document.getElementById('progressWrap').style.display = 'none';
     document.getElementById('progressPercent').style.display = 'none';
     document.getElementById('loadingNotice').style.display = 'none';
     document.getElementById('loadingText').innerText = "종묘 타임라인 로드 완료";
-    
+
     const btn = document.getElementById('startBtn');
     btn.style.display = 'block';
     btn.offsetHeight;
     btn.classList.add('show');
-    
+
     btn.addEventListener('click', () => {
-      // 전체화면 요청
       const doc = document.documentElement;
       if (doc.requestFullscreen) {
         doc.requestFullscreen().catch(err => console.log("Fullscreen blocked", err));
       } else if (doc.webkitRequestFullscreen) {
         doc.webkitRequestFullscreen();
       }
-      // 오버레이 즉시 직접 제거 (워멤업 이미 완료된 상태)
       const overlay = document.getElementById('loadingOverlay');
       overlay.style.transition = 'opacity 0.5s ease';
       overlay.style.opacity = '0';
@@ -749,62 +749,49 @@
     });
   }
 
-  req.onload = function() {
-    if (this.status === 200) {
-      const videoBlob = this.response;
-      const vidURL = URL.createObjectURL(videoBlob);
-      video.src = vidURL;
+  function startWarmup() {
+    document.getElementById('progressWrap').style.display = 'none';
+    document.getElementById('progressPercent').style.display = 'none';
+    document.getElementById('loadingNotice').style.display = 'none';
+    const loadingText = document.getElementById('loadingText');
 
-      document.getElementById('progressBar').style.width = '100%';
-      document.getElementById('progressPercent').innerText = '100%';
+    const warmupTimes = timelineData.map(d => d.timecode);
+    let warmupIdx = 0;
 
-      // 블롫 세팅 후 비디오가 실제로 재생 가능해지면 워멤업 시작
-      video.oncanplay = function() {
-        video.oncanplay = null;
-
-        // 로딩 화면을 "프레임 준비 중" 상태로 전환
-        document.getElementById('progressWrap').style.display = 'none';
-        document.getElementById('progressPercent').style.display = 'none';
-        document.getElementById('loadingNotice').style.display = 'none';
-        const loadingText = document.getElementById('loadingText');
-
-        // 75개 연도 타임코드를 순차 seek → 브라우저 디코더 완전 워멤업
-        const warmupTimes = timelineData.map(d => d.timecode);
-        let warmupIdx = 0;
-
-        function doWarmup() {
-          if (warmupIdx >= warmupTimes.length) {
-            // 등장 타임코드를 영상 시작점으로 원위치 복원
-            video.onseeked = null;
-            video.currentTime = 0;
-            showStartButton();
-            return;
-          }
-          loadingText.innerText = `프레임 준비 중... (${warmupIdx + 1} / ${warmupTimes.length})`;
-          video.currentTime = warmupTimes[warmupIdx];
-          warmupIdx++;
-          video.onseeked = doWarmup;
-        }
-        doWarmup();
-      };
+    function doWarmup() {
+      if (warmupIdx >= warmupTimes.length) {
+        video.onseeked = null;
+        video.currentTime = 0;
+        showStartButton();
+        return;
+      }
+      loadingText.innerText = `프레임 준비 중... (${warmupIdx + 1} / ${warmupTimes.length})`;
+      video.currentTime = warmupTimes[warmupIdx];
+      warmupIdx++;
+      video.onseeked = doWarmup;
     }
-  };
+    doWarmup();
+  }
 
-  req.onprogress = function(e) {
-    if (e.lengthComputable) {
-      const percentComplete = (e.loaded / e.total) * 100;
-      document.getElementById('progressBar').style.width = percentComplete + '%';
-      document.getElementById('progressPercent').innerText = Math.round(percentComplete) + '%';
+  // buffered 기반 다운로드 진행률 표시
+  let progressInterval = setInterval(() => {
+    if (!video.duration) return;
+    const buffered = video.buffered;
+    if (buffered.length > 0) {
+      const pct = Math.min(100, Math.round((buffered.end(buffered.length - 1) / video.duration) * 100));
+      document.getElementById('progressBar').style.width = pct + '%';
+      document.getElementById('progressPercent').innerText = pct + '%';
     }
-  };
+  }, 500);
 
-  req.onerror = function() {
-    console.error("비디오 프리로드 실패. 직접 로드 폴백 실행.");
-    video.src = "video.mp4"; // 로컬 폴백 또는 직접 로드
-    showStartButton();
+  // 전체 버퍼링 완료 후 워밍업 시작
+  video.oncanplaythrough = function() {
+    video.oncanplaythrough = null;
+    clearInterval(progressInterval);
+    document.getElementById('progressBar').style.width = '100%';
+    document.getElementById('progressPercent').innerText = '100%';
+    setTimeout(startWarmup, 200);
   };
-
-  req.send();
 
   requestAnimationFrame(smoothScrubLoop);
 </script>
