@@ -118,12 +118,14 @@
     height: 100vh; 
     z-index: 1;
     overflow: hidden;
+    display: flex;
+    align-items: center; /* 세로 가운데 정렬 */
+    justify-content: center; /* 가로 가운데 정렬 */
   }
   
   video { 
-    width: 100%; 
-    height: 100%; 
-    object-fit: cover; /* 가득 채우기, 비율 유지 후 넘치는 부분 커팅 */
+    width: 100vw; 
+    height: auto; /* 16:10 모니터에서도 폭 맞춤으로 위아래 크롭 */
     pointer-events: none;
   }
 
