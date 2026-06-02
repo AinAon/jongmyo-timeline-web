@@ -749,30 +749,6 @@
     });
   }
 
-  function startWarmup() {
-    document.getElementById('progressWrap').style.display = 'none';
-    document.getElementById('progressPercent').style.display = 'none';
-    document.getElementById('loadingNotice').style.display = 'none';
-    const loadingText = document.getElementById('loadingText');
-
-    const warmupTimes = timelineData.map(d => d.timecode);
-    let warmupIdx = 0;
-
-    function doWarmup() {
-      if (warmupIdx >= warmupTimes.length) {
-        video.onseeked = null;
-        video.currentTime = 0;
-        showStartButton();
-        return;
-      }
-      loadingText.innerText = `프레임 준비 중... (${warmupIdx + 1} / ${warmupTimes.length})`;
-      video.currentTime = warmupTimes[warmupIdx];
-      warmupIdx++;
-      video.onseeked = doWarmup;
-    }
-    doWarmup();
-  }
-
   // buffered 기반 다운로드 진행률 표시
   let progressInterval = setInterval(() => {
     if (!video.duration) return;
@@ -784,13 +760,13 @@
     }
   }, 500);
 
-  // 전체 버퍼링 완료 후 워밍업 시작
+  // 전체 버퍼링 완료 후 바로 시작 버튼 노출
   video.oncanplaythrough = function() {
     video.oncanplaythrough = null;
     clearInterval(progressInterval);
     document.getElementById('progressBar').style.width = '100%';
     document.getElementById('progressPercent').innerText = '100%';
-    setTimeout(startWarmup, 200);
+    setTimeout(showStartButton, 300);
   };
 
   requestAnimationFrame(smoothScrubLoop);
